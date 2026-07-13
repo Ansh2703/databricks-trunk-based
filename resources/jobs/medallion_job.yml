@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    medallion_etl_job:
+      name: "trunk-based-medallion-etl-${bundle.target}"
+      
+      # Job configuration
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      
+      # Task dependencies: bronze → silver → gold
+      tasks:
+        - task_key: bronze_ingestion
+          notebook_task:
+            notebook_path: ../../notebooks/bronze_ingestion.py
+            source: WORKSPACE
+          # Use serverless compute (no cluster specification needed)
+          
+        - task_key: silver_transformation
+          depends_on:
+            - task_key: bronze_ingestion
+          notebook_task:
+            notebook_path: ../../notebooks/silver_transformation.py
+            source: WORKSPACE
+          
+        - task_key: gold_aggregation
+          depends_on:
+            - task_key: silver_transformation
+          notebook_task:
+            notebook_path: ../../notebooks/gold_aggregation.py
+            source: WORKSPACE
+      
+      # Pass environment variables to all tasks
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+      
+      # Email notifications on failure (important for trunk-based - prod deploys!)
+      email_notifications:
+        on_failure:
+          - mybeats320@gmail.com

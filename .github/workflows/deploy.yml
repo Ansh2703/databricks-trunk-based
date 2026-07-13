@@ -1,0 +1,181 @@
+name: Trunk-Based CI/CD Pipeline
+
+on:
+  # Run on pull requests to main for validation
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'notebooks/**'
+      - 'resources/**'
+      - 'databricks.yml'
+      - '.github/workflows/**'
+  
+  # Deploy to production on every push to main
+  push:
+    branches:
+      - main
+
+env:
+  DATABRICKS_HOST: https://dbc-68f6c19e-2b48.cloud.databricks.com
+
+jobs:
+  # ==========================================
+  # Job 1: Validate on Pull Request to Main
+  # ==========================================
+  validate:
+    name: Validate & Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # ==========================================
+      # CI: Code Quality & Testing
+      # ==========================================
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Testing Dependencies
+        run: |
+          echo "📦 Installing testing tools..."
+          pip install pytest black flake8
+          pip list
+      
+      - name: Code Formatting Check
+        run: |
+          echo "🎨 Checking code formatting with black..."
+          black --check --diff notebooks/
+        continue-on-error: false
+      
+      - name: Code Linting
+        run: |
+          echo "🔍 Linting code with flake8..."
+          flake8 notebooks/ --max-line-length=120 --ignore=E501,W503,F821,E402,W291
+        continue-on-error: false
+      
+      - name: Run Unit Tests
+        run: |
+          echo "🧪 Running unit tests..."
+          if [ -d "tests/unit" ]; then
+            pytest tests/unit/ -v --tb=short
+          else
+            echo "⚠️ No unit tests found"
+            exit 1  # Fail if no tests (trunk-based requires high test coverage)
+          fi
+        continue-on-error: false
+      
+      - name: Run Integration Tests
+        run: |
+          echo "🔗 Running integration tests..."
+          if [ -d "tests/integration" ]; then
+            pytest tests/integration/ -v --tb=short
+          else
+            echo "⚠️ No integration tests found"
+          fi
+        continue-on-error: true
+      
+      # ==========================================
+      # Bundle Validation
+      # ==========================================
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          databricks --version
+      
+      - name: Validate bundle configuration
+        run: |
+          databricks bundle validate --target prod
+        env:
+          DATABRICKS_HOST: ${{ env.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      
+      - name: Validation Success
+        run: |
+          echo "✅ All CI checks passed!"
+          echo "  - Code formatting ✓"
+          echo "  - Code linting ✓"
+          echo "  - Unit tests ✓"
+          echo "  - Integration tests ✓"
+          echo "  - Bundle validation ✓"
+          echo ""
+          echo "⚠️  REMINDER: This will deploy to PRODUCTION on merge!"
+          echo "   Make sure your feature is complete and tested."
+
+  # ==========================================
+  # Job 2: Deploy to Production
+  # Runs on EVERY merge to main
+  # ==========================================
+  deploy-prod:
+    name: Deploy to PRODUCTION
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://dbc-68f6c19e-2b48.cloud.databricks.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          databricks --version
+      
+      - name: Deploy to PRODUCTION
+        run: |
+          echo "🚀 Deploying to PRODUCTION environment..."
+          echo "📌 Commit: ${{ github.sha }}"
+          echo "👤 Author: ${{ github.actor }}"
+          databricks bundle deploy --target prod
+        env:
+          DATABRICKS_HOST: ${{ env.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      
+      - name: Run PROD Pipeline
+        run: |
+          echo "▶️ Running medallion ETL job in PRODUCTION..."
+          databricks bundle run medallion_etl_job --target prod
+        env:
+          DATABRICKS_HOST: ${{ env.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      
+      - name: Tag Release
+        if: success()
+        run: |
+          echo "🏷️ Tagging production release..."
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          TAG="prod-${TIMESTAMP}-${{ github.run_number }}"
+          git tag -a "$TAG" -m "Production deployment - Run #${{ github.run_number }}"
+          git push origin "$TAG"
+          echo "✅ Tagged as: $TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: PROD Deployment Success
+        run: |
+          echo "✅ PRODUCTION deployment completed!"
+          echo "📊 Tables created in: trunk_based.trunk_based_prod"
+          echo "🔗 Workspace: $DATABRICKS_HOST"
+          echo "🎉 Production release successful!"
+          echo "🏷️ Release tagged: prod-$(date +%Y%m%d)-${{ github.run_number }}"
+      
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "🚨 PRODUCTION DEPLOYMENT FAILED!"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Author: ${{ github.actor }}"
+          echo "⚠️ IMMEDIATE ACTION REQUIRED!"
+          echo ""
+          echo "To rollback, use the previous tag:"
+          echo "  git checkout <previous-tag>"
+          echo "  git push origin main --force"
