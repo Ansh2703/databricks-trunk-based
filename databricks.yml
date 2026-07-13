@@ -1,0 +1,39 @@
+# Declarative Automation Bundle configuration for Trunk-Based Development
+# More info: https://docs.databricks.com/en/dev-tools/bundles/settings.html
+
+bundle:
+  name: "trunk-based"
+
+# Include all resource definitions
+include:
+  - resources/*.yml
+  - resources/*/*.yml
+
+# Variables used across all targets
+variables:
+  catalog:
+    description: "Unity Catalog name for the environment"
+  schema:
+    description: "Schema name for the environment"
+
+targets:
+  # Production environment - deploys on every merge to 'main' branch
+  # In trunk-based development, we deploy directly to production
+  # Use feature flags for incomplete features if needed
+  prod:
+    mode: production
+    default: true
+    workspace:
+      host: https://dbc-68f6c19e-2b48.cloud.databricks.com
+      root_path: /Users/mybeats320@gmail.com/.bundle/${bundle.name}/${bundle.target}
+    
+    # Production-specific variables
+    variables:
+      catalog: trunk_based
+      schema: trunk_based_prod
+    
+    run_as:
+      # This runs as mybeats320@gmail.com in production. 
+      # Could also use a service principal for production deployments
+      # See: https://docs.databricks.com/dev-tools/bundles/permissions.html
+      user_name: mybeats320@gmail.com
