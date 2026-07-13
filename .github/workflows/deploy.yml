@@ -113,6 +113,8 @@ jobs:
   deploy-prod:
     name: Deploy to PRODUCTION
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow tagging releases
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: production
