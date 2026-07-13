@@ -41,7 +41,7 @@ df_bronze.display()
 
 from pyspark.sql.functions import col, trim, upper, current_timestamp, current_date
 
-# Data quality transformations
+# Data-quality transformations
 df_silver = (
     df_bronze.filter(col("customer_id").isNotNull())
     .filter(col("customer_name").isNotNull())
