@@ -53,14 +53,21 @@ def test_email_validation():
     """Test email format validation logic."""
     valid_emails = ["user@example.com", "test.user@domain.co.uk"]
     invalid_emails = ["invalid", "no@domain", "@example.com"]
-    
-    # Simple email validation (this is a placeholder for real validation logic)
+
+    # Improved email validation with proper checks
     def is_valid_email(email):
-        return "@" in email and "." in email.split("@")[1]
-    
+        if "@" not in email:
+            return False
+        parts = email.split("@")
+        if len(parts) != 2:  # Should have exactly one @
+            return False
+        local, domain = parts
+        # Check: local part must exist, domain must have a dot
+        return len(local) > 0 and "." in domain and len(domain.split(".")[0]) > 0
+
     for email in valid_emails:
         assert is_valid_email(email), f"Expected {email} to be valid"
-    
+
     for email in invalid_emails:
         assert not is_valid_email(email), f"Expected {email} to be invalid"
 
@@ -73,7 +80,7 @@ def test_state_aggregation_logic(sample_customer_data):
     for customer in sample_customer_data:
         state = customer["state"]
         state_counts[state] = state_counts.get(state, 0) + 1
-    
+
     # Validate aggregation results
     assert state_counts["CA"] == 1
     assert state_counts["NY"] == 1
