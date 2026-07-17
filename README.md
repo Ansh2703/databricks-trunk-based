@@ -302,6 +302,3 @@ git push origin main --force
 
 ---
 
-## 📞 **Contact**
-
-For questions or issues, contact: mybeats320@gmail.com
